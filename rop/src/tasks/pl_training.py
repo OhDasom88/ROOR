@@ -11,7 +11,7 @@ from pytorch_lightning.plugins.environments import LightningEnvironment
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.utilities.argparse import add_argparse_args
+# from pytorch_lightning.utilities.argparse import add_argparse_args
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from transformers import get_constant_schedule_with_warmup, get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
 from src.data.ro_dataset import RoDataset
@@ -187,7 +187,20 @@ class ROTrainingModule(pl.LightningModule):
 
     @classmethod
     def add_argparse_args(cls, parent_parser: ArgumentParser, **kwargs) -> ArgumentParser:
-        return add_argparse_args(cls, parent_parser, **kwargs)
+        """Add model specific arguments to the parser."""
+        parser = parent_parser.add_argument_group("TrainingModule")
+        # 모델의 모든 하이퍼파라미터를 동적으로 추가
+        for name, value in vars(cls.hparams).items():
+            if name not in ['collate_fn', 'tokenizer']:  # 특정 파라미터 제외
+                if isinstance(value, bool):
+                    parser.add_argument(f"--{name}", type=lambda x: bool(strtobool(x)), nargs='?', const=True, default=value)
+                elif isinstance(value, int):
+                    parser.add_argument(f"--{name}", type=int, default=value)
+                elif isinstance(value, float):
+                    parser.add_argument(f"--{name}", type=float, default=value)
+                else:
+                    parser.add_argument(f"--{name}", type=str, default=value)
+        return parent_parser
 
 
 def main(args):
@@ -202,12 +215,20 @@ def main(args):
     
     # model
 
-    config = LayoutLMv3Config.from_pretrained(pretrained_model_name_or_path=args.pretrained_model_path)
-    tokenizer = LayoutLMv3TokenizerFast.from_pretrained(pretrained_model_name_or_path=args.pretrained_model_path)
+    config = LayoutLMv3Config.from_pretrained(
+        pretrained_model_name_or_path=args.pretrained_model_path, 
+        local_files_only=True # 미리 다운한 모델 사용 - 250615
+    )
+    tokenizer = LayoutLMv3TokenizerFast.from_pretrained(
+        pretrained_model_name_or_path=args.pretrained_model_path, 
+        local_files_only=True # 미리 다운한 모델 사용 - 250615
+    )
     model = LayoutLMv3ForRORelation.from_pretrained(
         pretrained_model_name_or_path=args.pretrained_model_path,
         head_size=args.head_size,
-        dropout=args.dropout)
+        dropout=args.dropout,
+        local_files_only=True # 미리 다운한 모델 사용 - 250615
+    )
     
     # datamodule
 
@@ -301,17 +322,88 @@ def main(args):
                     
 
 if __name__ == '__main__':
+    # # 添加conflict_handler，防止和trainer参数冲突
+    # parser = ArgumentParser(conflict_handler='resolve')
+    # parser = Trainer.add_argparse_args(parser)
+    # parser = RODataModule.add_argparse_args(parser)
+
+    # # Data Hyperparameters
+    # parser.add_argument('--image_dir', default='./datasets/ROOR', type=str)
+    # parser.add_argument('--json_dir', default='./datasets/ROOR/jsons', type=str)
+    # parser.add_argument('--split_file_dir', default='./datasets/ROOR', type=str)
+    # parser.add_argument('--train_dataset_name', default='None', type=str)
+    # parser.add_argument('--valid_dataset_name', default='None', type=str)
+    # parser.add_argument('--test_dataset_name', default='None', type=str)
+    # parser.add_argument('--bbox_level', default='segment', type=str, help='word or segment')
+    # parser.add_argument('--unit_type', default='segment', type=str, help='word or segment')
+    # parser.add_argument('--max_num_units', default=256, type=int, )
+    # parser.add_argument('--max_x', default=1023, type=int)
+    # parser.add_argument('--max_y', default=1023, type=int)
+    # parser.add_argument('--shuffle', type=lambda x: bool(strtobool(x)), nargs='?', const=True, help='训练集是否shuffle',
+    #                     default=True)
+
+    # # Model Hyperparameters
+    # parser.add_argument('--pretrained_model_path', default='./models/layoutlmv3-base-2048',
+    #                     type=str)
+    # parser.add_argument('--head_size', default=128, type=int)
+    # parser.add_argument('--dropout', default=0.1, type=float)
+
+    # # Basic Training Control
+
+    # parser.add_argument('--do_train', type=lambda x: bool(strtobool(x)), nargs='?', const=True, help='do train',
+    #                     default=True)
+    # parser.add_argument('--do_test', type=lambda x: bool(strtobool(x)), nargs='?', const=True, help='do test',
+    #                     default=False)
+    # parser.add_argument('--do_predict', type=lambda x: bool(strtobool(x)), nargs='?', const=True, help='do test',
+    #                     default=False)
+    # parser.add_argument('--predict_output_dir', default='./datasets/FUNSD/jsons_pred', type=str)
+   
+
+    # parser.add_argument('--precision', default=32, type=int, )
+    # parser.add_argument('--num_nodes', default=1, type=int, )
+    # parser.add_argument('--gpus', default=0, type=int)
+    # parser.add_argument('--strategy', default=None, type=str)
+    # parser.add_argument('--max_epochs', default=100, type=int)
+    # parser.add_argument('--batch_size', default=2, type=int)
+    # parser.add_argument('--accumulate_grad_batches', default=2, type=int)
+    # parser.add_argument('--val_test_batch_size', default=None, type=int)
+    # parser.add_argument('--schedule_type', default='cosine', type=str, help='constant, linear, cosine',)
+    # parser.add_argument('--learning_rate', default=2e-5, type=float)
+    # parser.add_argument('--weight_decay', default=1e-5, type=float)
+    # parser.add_argument('--warmup_ratio', default=0.01, type=float)
+    # parser.add_argument('--patience', default=50, type=int)
+
+    # parser.add_argument('--save_model_dir', default='lightning_logs', type=str)
+    # parser.add_argument('--ckpt_path', default=None, type=str)
+    # parser.add_argument('--log_every_n_steps', default=1, type=int)
+    # parser.add_argument('--val_check_interval', default=1.0, type=float)  # int时多少个steps跑验证集,float 按照比例算
+    # parser.add_argument('--every_n_epochs', default=1, type=int)
+    # parser.add_argument('--keep_checkpoint_max', default=1, type=int)
+    # parser.add_argument('--deploy_path', default='', type=str)
+    # parser.add_argument('--seed', default=2024, type=int)
+    # parser.add_argument('--detect_anomaly', type=lambda x: bool(strtobool(x)), nargs='?', const=True,
+    #                     help='是否开启detect',
+    #                     default=False)
+    # args = parser.parse_args()
+    # print(args)
+    
+    # main(args)
+
     # 添加conflict_handler，防止和trainer参数冲突
     parser = ArgumentParser(conflict_handler='resolve')
     parser = Trainer.add_argparse_args(parser)
     parser = RODataModule.add_argparse_args(parser)
 
     # Data Hyperparameters
-    parser.add_argument('--image_dir', default='./datasets/ROOR', type=str)
-    parser.add_argument('--json_dir', default='./datasets/ROOR/jsons', type=str)
-    parser.add_argument('--split_file_dir', default='./datasets/ROOR', type=str)
-    parser.add_argument('--train_dataset_name', default='None', type=str)
-    parser.add_argument('--valid_dataset_name', default='None', type=str)
+    # parser.add_argument('--image_dir', default='./datasets/ROOR', type=str)
+    parser.add_argument('--image_dir', default='/home/dasom/ROOR/ROOR-Datasets/data', type=str)
+    parser.add_argument('--json_dir', default='/home/dasom/ROOR/ROOR-Datasets/data/jsons', type=str)
+    # parser.add_argument('--split_file_dir', default='./datasets/ROOR', type=str)
+    parser.add_argument('--split_file_dir', default='/home/dasom/ROOR/ROOR-Datasets/data', type=str)
+    # parser.add_argument('--train_dataset_name', default='None', type=str)
+    parser.add_argument('--train_dataset_name', default='data.train.txt', type=str)
+    # parser.add_argument('--valid_dataset_name', default='None', type=str)
+    parser.add_argument('--valid_dataset_name', default='data.val.txt', type=str)
     parser.add_argument('--test_dataset_name', default='None', type=str)
     parser.add_argument('--bbox_level', default='segment', type=str, help='word or segment')
     parser.add_argument('--unit_type', default='segment', type=str, help='word or segment')
@@ -322,12 +414,13 @@ if __name__ == '__main__':
                         default=True)
 
     # Model Hyperparameters
-    parser.add_argument('--pretrained_model_path', default='./models/layoutlmv3-base-2048',
+    # parser.add_argument('--pretrained_model_path', default='./models/layoutlmv3-base-2048',
+    parser.add_argument('--pretrained_model_path', default='/home/dasom/ROOR/make_weights/microsoft/layoutlmv3-base-2048',
                         type=str)
     parser.add_argument('--head_size', default=128, type=int)
     parser.add_argument('--dropout', default=0.1, type=float)
 
-    # Basic Training Control
+    # Basic Training Control    
 
     parser.add_argument('--do_train', type=lambda x: bool(strtobool(x)), nargs='?', const=True, help='do train',
                         default=True)
@@ -338,13 +431,18 @@ if __name__ == '__main__':
     parser.add_argument('--predict_output_dir', default='./datasets/FUNSD/jsons_pred', type=str)
    
 
-    parser.add_argument('--precision', default=32, type=int, )
+    # parser.add_argument('--precision', default=32, type=int, )
+    parser.add_argument('--precision', default=16, type=int, ) # Cuda outof memory
     parser.add_argument('--num_nodes', default=1, type=int, )
-    parser.add_argument('--gpus', default=0, type=int)
+    # parser.add_argument('--gpus', default=0, type=int)
+    parser.add_argument('--gpus', default=1, type=int)
     parser.add_argument('--strategy', default=None, type=str)
-    parser.add_argument('--max_epochs', default=100, type=int)
-    parser.add_argument('--batch_size', default=2, type=int)
+    # parser.add_argument('--max_epochs', default=100, type=int)
+    parser.add_argument('--max_epochs', default=500, type=int)
+    # parser.add_argument('--batch_size', default=2, type=int)
+    parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--accumulate_grad_batches', default=2, type=int)
+    # parser.add_argument('--accumulate_grad_batches', default=8, type=int)
     parser.add_argument('--val_test_batch_size', default=None, type=int)
     parser.add_argument('--schedule_type', default='cosine', type=str, help='constant, linear, cosine',)
     parser.add_argument('--learning_rate', default=2e-5, type=float)
@@ -357,7 +455,8 @@ if __name__ == '__main__':
     parser.add_argument('--log_every_n_steps', default=1, type=int)
     parser.add_argument('--val_check_interval', default=1.0, type=float)  # int时多少个steps跑验证集,float 按照比例算
     parser.add_argument('--every_n_epochs', default=1, type=int)
-    parser.add_argument('--keep_checkpoint_max', default=1, type=int)
+    # parser.add_argument('--keep_checkpoint_max', default=1, type=int)
+    parser.add_argument('--keep_checkpoint_max', default=8, type=int)
     parser.add_argument('--deploy_path', default='', type=str)
     parser.add_argument('--seed', default=2024, type=int)
     parser.add_argument('--detect_anomaly', type=lambda x: bool(strtobool(x)), nargs='?', const=True,

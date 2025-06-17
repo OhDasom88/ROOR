@@ -11,7 +11,10 @@ model_paths = [
     'google-bert/bert-base-uncased',
     'google-bert/bert-large-uncased',
     'facebook/bart-base',
-    'facebook/bart-large'
+    'facebook/bart-large',
+    'https://github.com/AlibabaResearch/AdvancedLiterateMachinery/releases/download/v1.1.0-geolayoutlm-model/geolayoutlm_large_pretrain.pt'
+    'https://github.com/AlibabaResearch/AdvancedLiterateMachinery/releases/download/v1.1.0-geolayoutlm-model/epoch.105-f1_labeling.0.9232.pt'
+    'https://github.com/AlibabaResearch/AdvancedLiterateMachinery/releases/download/v1.1.0-geolayoutlm-model/epoch.182-f1_linking.0.8923.pt'
 ]
 pbar = tqdm(total=len(model_paths))
 
@@ -77,3 +80,21 @@ pbar.set_description("Saving bart-large")
 model.save_pretrained("facebook/bart-large")
 tokenizer.save_pretrained("facebook/bart-large")
 pbar.update(1)
+
+
+# geolayoutlm-large-pretrain
+import requests
+output_dir = '/home/dasom/ROOR/make_weights/geolayoutlm'
+for url in model_paths[-3:]:
+    res = requests.head(url)
+    file_size = int(res.headers.get('content-length', 0))
+    print(f"{url} size: {file_size}")
+    with requests.get(url, stream=True) as r, open(output_path, 'wb') as f, tqdm(
+        total=file_size, unit='B', unit_scale=True, unit_divisor=1024
+    ) as progress:
+        for chunk in r.iter_content(chunk_size=chunk_size):
+            if chunk:
+                f.write(chunk)
+                progress.update(len(chunk))
+
+    print(f"✅ 다운로드 완료: {output_path}")

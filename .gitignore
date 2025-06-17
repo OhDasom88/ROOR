@@ -174,3 +174,10 @@ lightning_logs/
 rore/ckpts/*.pt
 rore/dataset/__pycache__/
 rop/src/tests/
+
+
+
+# 20250617
+*.bin
+*.pt
+ROOR-Datasets/

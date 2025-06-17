@@ -67,7 +67,9 @@ class GeoLayoutLMVIEModel(nn.Module):
             state_dict = state_dict['state_dict']
         state_dict_new = dict()
         for key, value in state_dict.items():
+            # print(key)
             # 对各种权重格式进行兼容
+            # key = key.replace("geolayoutlm.", "")#20250617
             if 'pair_direct_cls' in key:
                 continue
             if key.startswith("ptm_head.predictions.") or key.startswith("ptm_head.triple_geometric_head."):
@@ -75,7 +77,11 @@ class GeoLayoutLMVIEModel(nn.Module):
             if key.startswith("net."):
                 key = key.replace("net.", "")
             elif key.startswith("model."):
-                key = key.replace("model.", "")
+                # print(key)
+                # key = key.replace("model.", "")
+                key = key.strip("model.")
+                # print(key)
+
             if key.startswith("ptm_head."):
                 key = key.replace("ptm_head.", "")
             if key in ['bio_classifier.weight', 'bio_classifier.bias']:

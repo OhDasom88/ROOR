@@ -3,6 +3,11 @@ import math
 import os
 import copy
 
+# 20250617
+import sys
+project_path = '/home/dasom/ROOR'
+sys.path.append(f'{project_path}/rore')
+
 import torch.multiprocessing as mp
 import torch
 import pytorch_lightning as pl
@@ -11,7 +16,7 @@ from pytorch_lightning.plugins.environments import LightningEnvironment
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.utilities.argparse import add_argparse_args
+# from pytorch_lightning.utilities.argparse import add_argparse_args #20250617
 from transformers import get_constant_schedule_with_warmup, get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
 from utils.log_utils import create_logger
 from utils.utils import strtobool
@@ -199,7 +204,20 @@ class TrainingModule(pl.LightningModule):
 
     @classmethod
     def add_argparse_args(cls, parent_parser: ArgumentParser, **kwargs) -> ArgumentParser:
-        return add_argparse_args(cls, parent_parser, **kwargs)
+        """Add model specific arguments to the parser."""
+        parser = parent_parser.add_argument_group("TrainingModule")
+        # 모델의 모든 하이퍼파라미터를 동적으로 추가
+        for name, value in vars(cls.hparams).items():
+            if name not in ['collate_fn', 'tokenizer']:  # 특정 파라미터 제외
+                if isinstance(value, bool):
+                    parser.add_argument(f"--{name}", type=lambda x: bool(strtobool(x)), nargs='?', const=True, default=value)
+                elif isinstance(value, int):
+                    parser.add_argument(f"--{name}", type=int, default=value)
+                elif isinstance(value, float):
+                    parser.add_argument(f"--{name}", type=float, default=value)
+                else:
+                    parser.add_argument(f"--{name}", type=str, default=value)
+        return parent_parser
 
 
 def main(args):
@@ -298,30 +316,33 @@ if __name__ == '__main__':
     parser = DocumentDataModule.add_argparse_args(parser)
 
     # Data Hyperparameters
-    parser.add_argument('--image_dir', default='/path/to/dataset', type=str)
-    parser.add_argument('--json_dir', default='/path/to/dataset/jsons', type=str)
-    parser.add_argument('--split_file_dir', default='/path/to/dataset', type=str)
-    parser.add_argument('--train_dataset_name', default='None', type=str)
-    parser.add_argument('--valid_dataset_name', default='None', type=str)
-    parser.add_argument('--test_dataset_name', default='None', type=str)
+    parser.add_argument('--image_dir', default=f'{project_path}/ROOR-Datasets/data', type=str)
+    parser.add_argument('--json_dir', default=f'{project_path}/ROOR-Datasets/data/jsons', type=str)
+    parser.add_argument('--split_file_dir', default=f'{project_path}/ROOR-Datasets/data', type=str)
+    parser.add_argument('--train_dataset_name', default='data.train.txt', type=str)
+    parser.add_argument('--valid_dataset_name', default='data.val.txt', type=str)
+    parser.add_argument('--test_dataset_name', default='data.val.txt', type=str)
     parser.add_argument('--label_file_name', default='labels.txt', type=str)
     parser.add_argument('--shuffle', type=lambda x: bool(strtobool(x)), nargs='?', const=True, help='训练集是否shuffle',
                         default=True)
 
     # Model Hyperparameters
 
-    parser.add_argument('--config_json_path', default='configs/config.json', type=str)
-    parser.add_argument('--bert_base_path', default='configs/config.json', type=str)
-    parser.add_argument('--model_ckpt_path', default='ckpts/geolayoutlm.pt', type=str)
+    # parser.add_argument('--config_json_path', default='configs/config.json', type=str)
+    parser.add_argument('--config_json_path', default=f'{project_path}/rore/configs/1024_small_vram.json', type=str)
+    parser.add_argument('--bert_base_path', default=f'{project_path}/make_weights/google-bert/bert-base-uncased', type=str)
+    parser.add_argument('--model_ckpt_path', default=f'{project_path}/rore/lightning_logs/version_4/checkpoints/epoch=109-step=1099-val_labeling_f1=0.82732-val_linking_f1=0.85568.ckpt', type=str)
 
     # Basic Training Control
 
     parser.add_argument('--do_train', type=lambda x: bool(strtobool(x)), nargs='?', const=True, help='do train',
-                        default=True)
+                        # default=True)
+                        default=False)
     parser.add_argument('--do_test', type=lambda x: bool(strtobool(x)), nargs='?', const=True, help='do test',
-                        default=False)
+                        # default=False)
+                        default=True)
     parser.add_argument('--do_predict', type=lambda x: bool(strtobool(x)), nargs='?', const=True, help='do test',
-                        default=False)
+                        default=False) # not implemented
     parser.add_argument('--precision', default=32, type=int, )
     parser.add_argument('--num_nodes', default=1, type=int, )
     parser.add_argument('--gpus', default=0, type=int)
@@ -329,13 +350,15 @@ if __name__ == '__main__':
     parser.add_argument('--max_block_num', default=160, type=int, help='entity linking时最大实体个数')
     parser.add_argument('--use_vision', type=lambda x: bool(strtobool(x)), nargs='?', const=True,
                         help='entity linking是否使用视觉信号', default=True)
-    parser.add_argument('--linking_coeff', default=0.5, type=float, help='linking loss的权重，0-1之间，0:全是labeling，1:全是linking')
+    # parser.add_argument('--linking_coeff', default=0.5, type=float, help='linking loss的权重，0-1之间，0:全是labeling，1:全是linking')
+    parser.add_argument('--linking_coeff', default=0.0, type=float, help='linking loss的权重，0-1之间，0:全是labeling，1:全是linking')
     parser.add_argument('--use_segment', type=lambda x: bool(strtobool(x)), nargs='?', const=True,
                         help='是否使用segment框', default=True)
     parser.add_argument('--lam', default=0.1, type=float)
     parser.add_argument('--num_ro_layers', default=12, type=int)
     parser.add_argument('--use_aux_ro', type=lambda x: bool(strtobool(x)), nargs='?', const=True,
-                        help='是否使用阅读顺序信号', default=False)
+                        # help='是否使用阅读顺序信号', default=False)
+                        help='是否使用阅读顺序信号', default=True)
     parser.add_argument('--transitive_expand', type=lambda x: bool(strtobool(x)), nargs='?', const=True,
                         help='阅读顺序信号是否增加传递性', default=False)
     parser.add_argument('--max_epochs', default=100, type=int)
@@ -343,7 +366,8 @@ if __name__ == '__main__':
     parser.add_argument('--accumulate_grad_batches', default=2, type=int)
     parser.add_argument('--val_test_batch_size', default=None, type=int)
     parser.add_argument('--schedule_type', default='cosine', type=str, help='constant, linear, cosine', )
-    parser.add_argument('--learning_rate', default=5e-5, type=float)
+    # parser.add_argument('--learning_rate', default=5e-5, type=float)
+    parser.add_argument('--learning_rate', default=1e-5, type=float)
     parser.add_argument('--weight_decay', default=0, type=float)
     parser.add_argument('--warmup_ratio', default=0, type=float)
     parser.add_argument('--patience', default=50, type=int)
